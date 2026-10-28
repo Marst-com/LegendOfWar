@@ -242,6 +242,9 @@ private fun LegendOfWarScreen() {
                                 )
                             }
                         },
+                        divisions = session.divisions,
+                        wars = session.world.wars,
+                        selectedDivisionId = session.selectedDivisionId
                         modifier = Modifier.fillMaxSize()
                     )
 
