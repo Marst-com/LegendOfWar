@@ -1,71 +1,27 @@
 
-name: Android APK Build
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
+      - name: Install Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          gradle-version: "8.9"
 
-      - name: Locate Android SDK
+      - name: Generate Gradle Wrapper if missing
         shell: bash
         run: |
           set -euxo pipefail
-          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
-          java -version
-          command -v sdkmanager || true
-          ls -la "${ANDROID_HOME:-/usr/local/lib/android/sdk}" || true
 
-      - name: Set up Android SDK
-        id: android
-        uses: android-actions/setup-android@v3
-        continue-on-error: true
-        with:
-          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
-          accept-android-sdk-licenses: "true"
-
-      - name: Diagnose SDK setup
-        if: steps.android.outcome == 'failure'
-        shell: bash
-        run: |
-          echo "Android SDK setup failed."
-          echo "Checking SDK manager..."
-          find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" \
-            -maxdepth 4 -type f -name sdkmanager -print 2>&1 || true
-          SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" \
-            -maxdepth 4 -type f -name sdkmanager 2>/dev/null | head -n 1)"
-          if [ -n "$SDKMANAGER" ]; then
-            "$SDKMANAGER" --version 2>&1 || true
-            "$SDKMANAGER" --list 2>&1 || true
+          if [ ! -f settings.gradle.kts ] && [ ! -f settings.gradle ]; then
+            echo "ERROR: settings.gradle(.kts) is missing from repository root."
+            find . -maxdepth 3 -type f | sort | head -200
+            exit 1
           fi
-          exit 1
 
-      - name: Verify Gradle wrapper
-        shell: bash
-        run: |
-          set -euxo pipefail
+          if [ ! -f gradlew ]; then
+            gradle wrapper --gradle-version 8.9
+          fi
+
+          chmod +x gradlew
           test -f gradlew
           test -f gradle/wrapper/gradle-wrapper.jar
-          test -f gradle/wrapper/gradle-wrapper.properties
-          chmod +x gradlew
 
       - name: Build APK with diagnostic log
         id: gradle
@@ -81,8 +37,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: LegendOfWar-build-logs
-          path: |
-            build-debug.log
+          path: build-debug.log
           if-no-files-found: warn
           retention-days: 7
 
