@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class WorldDatabase(context: Context) :
-    SQLiteOpenHelper(context, "legend_of_war.db", null, 1) {
+    SQLiteOpenHelper(context, "legend_of_war.db", null, 2) {
 
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
