@@ -4,60 +4,94 @@ name: Android APK Build
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-    paths:
-      - "app/**"
-      - "gradle/**"
-      - "*.gradle.kts"
-      - "gradle.properties"
-      - ".github/workflows/android-build.yml"
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Build LegendOfWar APK
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
-      - name: Checkout source
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
+      - name: Locate Android SDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
+          java -version
+          command -v sdkmanager || true
+          ls -la "${ANDROID_HOME:-/usr/local/lib/android/sdk}" || true
+
       - name: Set up Android SDK
+        id: android
         uses: android-actions/setup-android@v3
+        continue-on-error: true
         with:
-          packages: ""
+          packages: "platform-tools platforms;android-35 build-tools;35.0.0"
           accept-android-sdk-licenses: "true"
 
-      - name: Install required SDK packages
+      - name: Diagnose SDK setup
+        if: steps.android.outcome == 'failure'
+        shell: bash
         run: |
-          set -e
-          sdkmanager --version
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
+          echo "Android SDK setup failed."
+          echo "Checking SDK manager..."
+          find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" \
+            -maxdepth 4 -type f -name sdkmanager -print 2>&1 || true
+          SDKMANAGER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}" \
+            -maxdepth 4 -type f -name sdkmanager 2>/dev/null | head -n 1)"
+          if [ -n "$SDKMANAGER" ]; then
+            "$SDKMANAGER" --version 2>&1 || true
+            "$SDKMANAGER" --list 2>&1 || true
+          fi
+          exit 1
 
       - name: Verify Gradle wrapper
+        shell: bash
         run: |
+          set -euxo pipefail
           test -f gradlew
           test -f gradle/wrapper/gradle-wrapper.jar
+          test -f gradle/wrapper/gradle-wrapper.properties
           chmod +x gradlew
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace assembleDebug
+      - name: Build APK with diagnostic log
+        id: gradle
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace --info assembleDebug \
+            2>&1 | tee build-debug.log
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LegendOfWar-build-logs
+          path: |
+            build-debug.log
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Fail if build failed
+        if: steps.gradle.outcome == 'failure'
+        run: exit 1
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: LegendOfWar-debug
