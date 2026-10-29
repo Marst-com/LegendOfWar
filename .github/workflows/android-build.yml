@@ -4,13 +4,15 @@ name: LegendOfWar Android Build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Build LegendOfWar APK
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -34,15 +36,10 @@ jobs:
           java -version
 
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          echo "SDK=$SDK"
 
           ls -la "$SDK" || true
-          ls -la "$SDK/cmdline-tools" || true
           ls -la "$SDK/platforms" || true
           ls -la "$SDK/build-tools" || true
-
-          find "$SDK/cmdline-tools" \
-            -maxdepth 3 -type f -name sdkmanager -print 2>&1 || true
 
       - name: Install Android SDK packages
         shell: bash
@@ -50,20 +47,16 @@ jobs:
           set -euxo pipefail
 
           SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
-          SDKMANAGER="$SDK/cmdline-tools/latest/bin/sdkmanager"
+          SDKMANAGER="$(find "$SDK/cmdline-tools" \
+            -maxdepth 3 -type f -name sdkmanager \
+            2>/dev/null | head -n 1 || true)"
 
-          if [ ! -x "$SDKMANAGER" ]; then
-            SDKMANAGER="$(find "$SDK/cmdline-tools" \
-              -maxdepth 3 -type f -name sdkmanager \
-              2>/dev/null | head -n 1 || true)"
-          fi
-
-          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager was not found or is not executable."
+          if [ -z "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found."
             exit 1
           fi
 
-          "$SDKMANAGER" --version
+          "$SDKMANAGER" --sdk_root="$SDK" --version
 
           yes | "$SDKMANAGER" --sdk_root="$SDK" --licenses \
             || true
@@ -73,16 +66,55 @@ jobs:
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-      - name: Verify project files
+      - name: Inspect project structure
         shell: bash
         run: |
           set -euxo pipefail
 
+          echo "=== Repository root ==="
+          pwd
           ls -la
+
+          echo "=== Gradle files ==="
+          find . -maxdepth 4 -type f \
+            \( -name "settings.gradle" \
+            -o -name "settings.gradle.kts" \
+            -o -name "build.gradle" \
+            -o -name "build.gradle.kts" \
+            -o -name "gradlew" \) -print
 
           test -d app
           test -f app/build.gradle.kts -o -f app/build.gradle
           test -f settings.gradle.kts -o -f settings.gradle
+
+      - name: Validate AndroidManifest XML
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          FILE="app/src/main/AndroidManifest.xml"
+
+          echo "=== Manifest path ==="
+          test -f "$FILE"
+          echo "$FILE"
+
+          echo "=== First 20 lines ==="
+          nl -ba "$FILE" | head -20
+
+          echo "=== XML validation ==="
+          python3 - "$FILE" <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          path = sys.argv[1]
+
+          try:
+              ET.parse(path)
+              print("XML syntax OK")
+          except ET.ParseError as exc:
+              print(f"XML ERROR: {exc}")
+              raise SystemExit(1)
+          PY
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -99,6 +131,7 @@ jobs:
           fi
 
           chmod +x gradlew
+
           test -f gradle/wrapper/gradle-wrapper.jar
           test -f gradle/wrapper/gradle-wrapper.properties
 
@@ -108,21 +141,30 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew --no-daemon --stacktrace --info assembleDebug \
+
+          ./gradlew \
+            --no-daemon \
+            --stacktrace \
+            --info \
+            assembleDebug \
             2>&1 | tee build-debug.log
 
-      - name: Upload build log
+      - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: LegendOfWar-build-logs
-          path: build-debug.log
+          name: LegendOfWar-build-diagnostics
+          path: |
+            build-debug.log
           if-no-files-found: warn
           retention-days: 7
 
       - name: Report build failure
         if: steps.build.outcome == 'failure'
-        run: exit 1
+        shell: bash
+        run: |
+          echo "APK build failed. Check the Build APK logs."
+          exit 1
 
       - name: Upload APK
         if: success()
