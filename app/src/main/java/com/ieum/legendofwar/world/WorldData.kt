@@ -65,3 +65,15 @@ data class DiplomacyProposal(
     val status: String,
     val createdDay: Long
 )
+
+data class TreatyRecord(
+    val id: String,
+    val worldId: String,
+    val countryA: String,
+    val countryB: String,
+    val type: String,
+    val terms: List<TreatyTerm>,
+    val createdDay: Long,
+    val expiresDay: Long?,
+    val active: Boolean = true
+)
