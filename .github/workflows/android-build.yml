@@ -2,19 +2,28 @@
 name: Android APK Build
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "app/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/android-build.yml"
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Build LegendOfWar APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -25,23 +34,28 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+          accept-android-sdk-licenses: "true"
 
-      - name: Install Android SDK
-        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Grant Gradle permissions
-        run: chmod +x gradlew
-        continue-on-error: true
-
-      - name: Build Debug APK
+      - name: Install required SDK packages
         run: |
-          if [ -f ./gradlew ]; then
-            ./gradlew --no-daemon assembleDebug
-          else
-            echo "Gradle Wrapper is missing."
-            echo "Add gradlew, gradlew.bat and gradle/wrapper files."
-            exit 1
-          fi
+          set -e
+          sdkmanager --version
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Verify Gradle wrapper
+        run: |
+          test -f gradlew
+          test -f gradle/wrapper/gradle-wrapper.jar
+          chmod +x gradlew
+
+      - name: Build debug APK
+        run: ./gradlew --no-daemon --stacktrace assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -49,3 +63,4 @@ jobs:
           name: LegendOfWar-debug
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+          retention-days: 7
