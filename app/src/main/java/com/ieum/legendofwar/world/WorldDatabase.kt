@@ -20,12 +20,16 @@ class WorldDatabase(context: Context) :
             """
             CREATE TABLE worlds (
                 id TEXT PRIMARY KEY NOT NULL,
-                seed INTEGER NOT NULL,
-                name TEXT NOT NULL,
-                kind TEXT NOT NULL,
-                day INTEGER NOT NULL,
-                payload TEXT NOT NULL,
-                updated_at INTEGER NOT NULL
+                world_id TEXT NOT NULL,
+                country_a TEXT NOT NULL,
+                country_b TEXT NOT NULL,
+                type TEXT NOT NULL,
+                terms TEXT NOT NULL,
+                created_day INTEGER NOT NULL,
+                expires_day INTEGER,
+                active INTEGER NOT NULL DEFAULT 1,
+                FOREIGN KEY(world_id) REFERENCES worlds(id)
+                ON DELETE CASCADE
             )
             """.trimIndent()
         )
